@@ -1,325 +1,201 @@
-import tkinter, math, random, time
-from tkinter import *
-from time import *
-from math import *
-from random import *
-
-#############################################################################################################################################################################################
-
-# Canvas
-
-main = Tk()
-main.title('Inverse Kinematics')
-main.bind("<F1>", exit)
-main.attributes('-fullscreen', True)
-
-w = main.winfo_screenwidth()
-h = main.winfo_screenheight()
-
-width  = w - 500
-height = h
-
-bgcolor = "#%02x%02x%02x" % (  0,  0,  0)
-white   = "#%02x%02x%02x" % (255,255,255)
-
-cnv = tkinter.Canvas(main, width=w, height=h)
-cnv.configure(background=bgcolor)
-cnv.pack()
-
-#############################################################################################################################################################################################
-
-basecolor = white
-
-def draw():
-    cnv.delete("base")
-    cnv.create_line(width,0,width,height,fill=basecolor,tags="base")
-    cnv.create_line(width,100,width+500,100,fill=basecolor,tags="base")
-    cnv.create_text(width+250,50,fill=basecolor,font=("Times","20", "italic", "bold"), text = "FOLLOW", tags="base")
-
-draw()
-
-sliderlist = []
-slidercolor = []
-sliderx = []
-slidertop = []
-sliderbottom = []
-slideroutput = []
-value = []
-
-def slider(name, scolor, startpos, endpos, output, pos):
-    
-    cnv.create_line(startpos[0], startpos[1],
-                    endpos[0]  , endpos[1]  ,
-                    fill=scolor, width=2, tags=(str(name),"menu"))
-
-    cnv.create_line(startpos[0] - 20, startpos[1],
-                    startpos[0] + 20, startpos[1],
-                    fill=scolor, width=2, tags=(str(name),"menu"))
-
-    cnv.create_line(endpos[0] - 20, endpos[1],
-                    endpos[0] + 20, endpos[1],
-                    fill=scolor, width=2, tags=(str(name),"menu"))
-
-    cnv.create_oval(pos[0] - 10, pos[1] - 10,
-                    pos[0] + 10, pos[1] + 10,
-                    fill=scolor, width=0, tags=(str(name),"menu",str(name)+"a"))
-
-    sliderlist.append(str(name))
-    slidercolor.append(scolor)
-    sliderx.append(startpos[0])
-    slidertop.append(startpos[1])
-    sliderbottom.append(endpos[1])
-    slideroutput.append(output)
-
-    value.append(int(recalc(pos[1], slidertop[name], sliderbottom[name], slideroutput[name][0], slideroutput[name][1])))
-
-def recalc(x, a, b, c, d):
-
-    val = (x-a)/((b-a)/(d-c))+c
-    
-    return val
-
-
-def restart():
-    global k, value, t, base
-    k = int(value[0])    
-    t = [0]*k
-
-    for i in range(0,k):
-        a = (i/k)*2*pi
-        x = 600*cos(a)+cx
-        y = 600*sin(a)+cy
-        base = [x, y]
-        t[i] = TT(base)
-
-    cnv.delete("vals")
-
-    cnv.create_text(width+100,height-100,fill=basecolor,font=("Times","20", "italic", "bold"), text = str(value[0]), tags="vals")
-    cnv.create_text(width+250,height-100,fill=basecolor,font=("Times","20", "italic", "bold"), text = str(value[1]), tags="vals")
-    cnv.create_text(width+400,height-100,fill=basecolor,font=("Times","20", "italic", "bold"), text = str(value[2]), tags="vals")
-
-def slidertest():
-    global sx, sy
-    d = 0
-    for i in sliderlist:
-
-        if sliderx[d] - 50 < sx < sliderx[d] + 50:
-            if sy < slidertop[d]:
-                sy = slidertop[d]
-
-            elif sy > sliderbottom[d]:
-                sy = sliderbottom[d]
-            
-            
-            cnv.delete(str(i)+"a")
-
-            cnv.create_oval(sliderx[d] - 10, sy - 10,
-                            sliderx[d] + 10, sy + 10,
-                            fill=slidercolor[d], width=0, tags=(str(i),"menu",str(i)+"a"))
-
-            value[d] = int(recalc(sy, slidertop[d], sliderbottom[d], slideroutput[d][0], slideroutput[d][1]))          
-
-            restart()
-                
-        d += 1
-        
-slider(0, basecolor, [width+100, 150], [width+100, height-200], [1, 50], [width+100, 150])
-slider(1, basecolor, [width+250, 150], [width+250, height-200], [1, 100], [width+250, 150])
-slider(2, basecolor, [width+400, 150], [width+400, height-200], [1, 100], [width+400, 150])
-
-#############################################################################################################################################################################################
-
-# Colors
-
-def to8bit(raw_value):
-    return int(round(raw_value * 255))
-
-def hsv2hex(H, S, V):
-    if H == S == V == 0.0:
-        return (0,0,0)
-      
-    H *= 6
-    I = floor(H)
-    F = H - I
-    M = V * (1 - S)
-    N = V * (1 - S * F)
-    K = V * (1 - S * (1 - F))
-      
-    R = G = B = 0.0
-    if I == 0:
-        R = V
-        G = K
-        B = M
-    elif I == 1:
-        R = N
-        G = V
-        B = M
-    elif I == 2:
-        R = M
-        G = V
-        B = K
-    elif I == 3:
-        R = M
-        G = N
-        B = V
-    elif I == 4:
-        R = K
-        G = M
-        B = V
-    else:
-        R = V
-        G = M
-        B = N
-
-    red = to8bit(R)
-    green = to8bit(G)
-    blue = to8bit(B)
-
-    col = "#%02x%02x%02x" % (red, green, blue)
-      
-    return col
-
-cx = width/2
-cy = height/2
-
-#############################################################################################################################################################################################
-
-# Inverse Kinematics
-
-class Segment():
-    global value
-
-    def __init__(seg, x, y, lenght, angle, index):
-        seg.x = x
-        seg.y = y
-        seg.lenght = lenght
-        seg.angle = angle
-        seg.a = [x, y]
-        seg.color = hsv2hex(index/value[1],0.9,0.9)
-        seg.n = 5
-        seg.width = 5 #(len(sg)-index)/len(sg)*seg.n
-
-    def calculateB(seg):
-        seg.dx = seg.lenght * cos(seg.angle)
-        seg.dy = seg.lenght * sin(seg.angle)
-        seg.b = [seg.a[0] + seg.dx, seg.a[1] + seg.dy]
-
-    def setA(seg, pos):
-        seg.a = pos
-        seg.calculateB()
-
-    def follow(seg, tx, ty):
-        seg.target = [tx, ty]
-        seg.direction = [seg.target[0] - seg.a[0], seg.target[1] - seg.a[1]]
-        seg.angle = atan2(seg.direction[1],seg.direction[0])
-
-        seg.k = seg.lenght/(sqrt(seg.direction[0]**2+seg.direction[1]**2))
-        seg.direction = [-seg.direction[0]*seg.k, -seg.direction[1]*seg.k]
-        seg.a = [seg.target[0]+seg.direction[0], seg.target[1]+seg.direction[1]]
-
-    def head(seg):
-        cnv.create_oval(seg.b[0]-seg.n,seg.b[1]-seg.n,seg.b[0]+seg.n,seg.b[1]+seg.n,fill=seg.color,width=seg.width,tags="segment")
-
-    def update(seg):
-        seg.calculateB()
-
-    def show(seg):
-        cnv.create_line(seg.a[0],seg.a[1],seg.b[0],seg.b[1],fill=seg.color,width=seg.width,tags="segment")
-
-
-def move(event):
-    global mx, my
-    if event.x < width:
-        mx, my = event.x, event.y
-    elif event.x > width:
-        global sx, sy
-        sx, sy = event.x, event.y
-        slidertest()
-
-def button1(event):
-    global follow1
-
-    if event.y < 100 and event.x > width:
-        if follow1 == True:
-            follow1 = False
-        else:
-            follow1 = True
-
-main.bind("<B1-Motion>", move)
-main.bind("<Button-1>", button1)
-
-#############################################################################################################################################################################################
-
-xspeed = 5
-yspeed = 5
-r = 30
-gravity = 0.1
-
-mx, my = r, r
-
-def ballmove():
-    global xspeed, yspeed, mx, my, r
-    
-    mx += xspeed
-    my += yspeed
-    yspeed += gravity
-
-    if mx + r > width or mx - r < 0:
-        xspeed *= -1
-
-    if my + r > height:
-        my = height - r
-        yspeed *= -1
-        yspeed *= 0.95
-        xspeed *= 0.95
-
-    cnv.create_oval(mx-r,my-r,mx+r,my+r,fill=white,tags="ball")
-    
-#############################################################################################################################################################################################
-
-follow1 = True
-
-class TT():
-    global value, follow1
-
-    def __init__(tt,base):
-        tt.sg = [0]*value[1]
-        tt.sg[0] = Segment(cx, cy, value[2], 0, 0)
-        tt.sg[0].calculateB()
-        for i in range(1,len(tt.sg)):
-            tt.sg[i] = Segment(tt.sg[i-1].a[0], tt.sg[i-1].a[1], value[2], 0, i)
-            tt.sg[i].calculateB()
-        tt.base = base
-        
-    def update(tt):
-        tt.sg[0].follow(mx, my)
-        tt.sg[0].update()
-            
-        for i in range(1,len(tt.sg)):
-            tt.sg[i].follow(tt.sg[i-1].a[0], tt.sg[i-1].a[1])
-            tt.sg[i].update()
-
-        if follow1 == True:
-            tt.sg[len(tt.sg)-1].setA(tt.base)
-
-            for i in range(0,len(tt.sg)-1):
-                i = len(tt.sg)-2-i
-                tt.sg[i].setA(tt.sg[i+1].b)
-
-    def show(tt):
-        for i in range(0,len(tt.sg)):
-            tt.sg[i].show()
-
-#############################################################################################################################################################################################
-
-restart()
-
-while True:
-    for i in range(0,len(t)):
-        t[i].update()
-        t[i].show()
-
-    ballmove()
-    cnv.update()
-    cnv.delete("segment","ball")
-    sleep(0.03)
+"""Rainbow inverse-kinematics chains, drawn with Pygame."""
+
+import argparse
+import colorsys
+from functools import lru_cache
+import pygame
+
+from ik_model import ArmField, Ball, Settings
+
+BLACK = (0, 0, 0)
+WHITE = (255, 255, 255)
+FIXED_STEP = 1 / 60
+
+
+@lru_cache(maxsize=128)
+def text(font, label):
+    return font.render(str(label), True, WHITE)
+
+
+class Slider:
+    def __init__(self, label, x, top, bottom, maximum, value):
+        self.label = label
+        self.x, self.top, self.bottom = x, top, bottom
+        self.maximum, self.value = maximum, value
+        self.hitbox = pygame.Rect(x - 35, top - 20, 70, bottom - top + 40)
+
+    @property
+    def y(self):
+        return round(self.top + (self.value - 1) / (self.maximum - 1) * (self.bottom - self.top))
+
+    def set_from_y(self, y):
+        fraction = max(0, min(1, (y - self.top) / (self.bottom - self.top)))
+        self.value = round(1 + fraction * (self.maximum - 1))
+
+
+class Game:
+    def __init__(self, size=(1280, 720), settings=Settings(), fullscreen=False):
+        self.closed = False
+        pygame.display.init()
+        pygame.font.init()
+        try:
+            size = pygame.display.get_desktop_sizes()[0] if fullscreen else size
+            if size[0] < 800 or size[1] < 480:
+                raise ValueError('Use a window of at least 800×480')
+            self.screen = pygame.display.set_mode(size, pygame.FULLSCREEN if fullscreen else 0)
+            pygame.display.set_caption('Inverse Kinematics')
+            self.width, self.height = self.screen.get_size()
+            self.panel_width = max(280, min(360, self.width // 4))
+            self.field_size = (self.width - self.panel_width, self.height)
+            self.field_rect = pygame.Rect((0, 0), self.field_size)
+            self.toggle_rect = pygame.Rect(self.field_size[0], 0, self.panel_width, 100)
+            self.font = pygame.font.Font(None, 24)
+            self.title_font = pygame.font.Font(None, 32)
+            self.settings = settings
+            self.sliders = [Slider(label, self.field_size[0] + round(self.panel_width * fraction),
+                                   150, self.height - 150, maximum, value)
+                            for label, fraction, maximum, value in
+                            (('Chains', 0.2, 50, settings.chains),
+                             ('Segments', 0.5, 100, settings.segments),
+                             ('Length', 0.8, 100, settings.length))]
+            self.panel = pygame.Surface(self.screen.get_size()).convert()
+            self.panel.fill(BLACK)
+            pygame.draw.line(self.panel, WHITE, (self.field_size[0], 0), (self.field_size[0], self.height))
+            pygame.draw.line(self.panel, WHITE, (self.field_size[0], 100), (self.width, 100))
+            for slider in self.sliders:
+                pygame.draw.line(self.panel, WHITE, (slider.x, slider.top), (slider.x, slider.bottom), 2)
+                for y in (slider.top, slider.bottom):
+                    pygame.draw.line(self.panel, WHITE, (slider.x - 20, y), (slider.x + 20, y), 2)
+                label = text(self.font, slider.label)
+                self.panel.blit(label, label.get_rect(center=(slider.x, 125)))
+            hint = text(self.font, 'Drag ball · R reset · Esc exit')
+            self.panel.blit(hint, hint.get_rect(center=(self.toggle_rect.centerx, self.height - 25)))
+            self.anchored = True
+            self.dragging_ball = False
+            self.dragging_slider = None
+            self.running = True
+            self.accumulator = 0
+            self.clock = pygame.time.Clock()
+            self.reset()
+        except Exception:
+            self.close()
+            raise
+
+    def configure(self, settings):
+        self.settings = settings
+        self.field = ArmField(self.field_size, settings)
+        # The original segment order runs from the red tip back to the root.
+        self.colors = [tuple(round(channel * 255) for channel in
+                             colorsys.hsv_to_rgb(i / settings.segments, 0.9, 0.9))
+                       for i in reversed(range(settings.segments))]
+
+    def reset(self):
+        self.ball = Ball()
+        self.configure(self.settings)
+        self.dragging_ball = False
+        self.dragging_slider = None
+
+    def events(self):
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                self.running = False
+            elif event.type == pygame.KEYDOWN:
+                if event.key in (pygame.K_ESCAPE, pygame.K_F1):
+                    self.running = False
+                elif event.key == pygame.K_r:
+                    self.reset()
+            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                self.dragging_ball = False
+                self.dragging_slider = None
+                if self.toggle_rect.collidepoint(event.pos):
+                    self.anchored = not self.anchored
+                elif self.field_rect.collidepoint(event.pos):
+                    self.dragging_ball = True
+                    self.ball.drag(event.pos, self.field_size)
+                else:
+                    self.dragging_slider = next(
+                        (slider for slider in self.sliders if slider.hitbox.collidepoint(event.pos)), None)
+                    if self.dragging_slider is not None:
+                        self.dragging_slider.set_from_y(event.pos[1])
+            elif event.type == pygame.MOUSEMOTION:
+                if self.dragging_ball:
+                    self.ball.drag(event.pos, self.field_size)
+                elif self.dragging_slider is not None:
+                    self.dragging_slider.set_from_y(event.pos[1])
+            elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+                if self.dragging_ball:
+                    self.ball.drag(event.pos, self.field_size)
+                elif self.dragging_slider is not None:
+                    self.dragging_slider.set_from_y(event.pos[1])
+                self.dragging_ball = False
+                self.dragging_slider = None
+            elif event.type in (pygame.WINDOWFOCUSLOST, pygame.WINDOWLEAVE):
+                self.dragging_ball = False
+                self.dragging_slider = None
+        settings = Settings(*(slider.value for slider in self.sliders))
+        if settings != self.settings:
+            self.configure(settings)
+
+    def update(self):
+        if not self.dragging_ball:
+            self.ball.update(FIXED_STEP, self.field_size)
+        self.field.update((self.ball.x, self.ball.y), self.anchored)
+
+    def render(self):
+        self.screen.blit(self.panel, (0, 0))
+        self.screen.set_clip(self.field_rect)
+        for points in self.field.points.round().astype('int32').tolist():
+            for color, start, end in zip(self.colors, points, points[1:]):
+                pygame.draw.line(self.screen, color, start, end, 5)
+        pygame.draw.circle(self.screen, WHITE, (round(self.ball.x), round(self.ball.y)), self.ball.radius)
+        self.screen.set_clip(None)
+        title = text(self.title_font, 'ANCHOR: ON' if self.anchored else 'ANCHOR: OFF')
+        self.screen.blit(title, title.get_rect(center=self.toggle_rect.center))
+        for slider in self.sliders:
+            pygame.draw.circle(self.screen, WHITE, (slider.x, slider.y), 10)
+            label = text(self.font, slider.value)
+            self.screen.blit(label, label.get_rect(center=(slider.x, self.height - 90)))
+
+    def frame(self, elapsed):
+        self.events()
+        if not self.running:
+            return False
+        self.accumulator += min(max(elapsed, 0), 0.25)
+        while self.accumulator + 1e-12 >= FIXED_STEP:
+            self.update()
+            self.accumulator -= FIXED_STEP
+        self.render()
+        pygame.display.flip()
+        return True
+
+    def run(self):
+        while self.frame(self.clock.tick(60) / 1000):
+            pass
+
+    def close(self):
+        if not self.closed:
+            self.closed = True
+            pygame.quit()
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--size', type=int, nargs=2, default=(1280, 720), metavar=('WIDTH', 'HEIGHT'))
+    parser.add_argument('--fullscreen', action='store_true')
+    parser.add_argument('--chains', type=int, default=16)
+    parser.add_argument('--segments', type=int, default=32)
+    parser.add_argument('--length', type=int, default=12)
+    args = parser.parse_args()
+    game = None
+    try:
+        game = Game(args.size, Settings(args.chains, args.segments, args.length), args.fullscreen)
+        game.run()
+    except (ValueError, pygame.error) as error:
+        parser.exit(1, f'Cannot start: {error}\n')
+    finally:
+        if game is not None:
+            game.close()
+
+
+if __name__ == '__main__':
+    main()
