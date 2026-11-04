@@ -1,264 +1,141 @@
-import tkinter, math, random, time
-from tkinter import *
-from time import *
-from math import *
-from random import *
+"""Rotate a rainbow Fibonacci sphere with Pygame."""
 
-# Canvas
+import argparse
+import math
+import pygame
 
-main = Tk()
-main.title('3D Sphere')
-main.bind("<F1>", exit)
-main.attributes('-fullscreen', True)
-
-w = main.winfo_screenwidth()
-h = main.winfo_screenheight()
+from sphere_model import Sphere
 
 
-width  = w
-height = h
+class Game:
+    def __init__(self, samples=100, size=(1280, 720), fullscreen=False):
+        self.closed = False
+        pygame.display.init()
+        try:
+            if fullscreen:
+                size = pygame.display.get_desktop_sizes()[0]
+            if min(size) < 240:
+                raise ValueError('Use a window of at least 240×240')
+            self.screen = pygame.display.set_mode(size, pygame.FULLSCREEN if fullscreen else 0)
+            pygame.display.set_caption('Fibonacci Sphere')
+            self.sphere = Sphere(samples)
+            self.edge_indices = self.sphere.edges.tolist()
+            self.clock = pygame.time.Clock()
+            self.running = True
+            self.reset()
+        except Exception:
+            self.close()
+            raise
 
-bgcolor = "#%02x%02x%02x" % (  0,  0,  0)
-white   = "#%02x%02x%02x" % (255,255,255)
+    def reset(self):
+        self.angles = [0.0, 0.0, 0.0]
+        self.zoom = min(300, min(self.screen.get_size()) * 0.42)
+        self.auto = False
+        self.show_lines = True
+        self.dragging = False
+        self.last_mouse = None
+        self.dirty = True
 
-cnv = tkinter.Canvas(main, width=w, height=h)
-cnv.configure(background=bgcolor)
-cnv.pack()
+    def zoom_by(self, steps):
+        maximum = min(self.screen.get_size()) * 4
+        self.zoom = max(20, min(maximum, self.zoom + 5 * steps))
+        self.dirty = True
 
-# Cols
-def to8bit(raw_value):
-    return int(round(raw_value * 256))
+    def drag_to(self, position):
+        if self.last_mouse is not None:
+            dx, dy = position[0] - self.last_mouse[0], position[1] - self.last_mouse[1]
+            self.angles[0] = (self.angles[0] + dy / 100) % math.tau
+            self.angles[1] = (self.angles[1] + dx / 100) % math.tau
+            self.dirty = True
+        self.last_mouse = position
 
-def hsv2hex(H, S, V):
-    if H == S == V == 0.0:
-        return (0,0,0)
-      
-    H *= 6
-    I = floor(H)
-    F = H - I
-    M = V * (1 - S)
-    N = V * (1 - S * F)
-    K = V * (1 - S * (1 - F))
-      
-    R = G = B = 0.0
-    if I == 0:
-        R = V
-        G = K
-        B = M
-    elif I == 1:
-        R = N
-        G = V
-        B = M
-    elif I == 2:
-        R = M
-        G = V
-        B = K
-    elif I == 3:
-        R = M
-        G = N
-        B = V
-    elif I == 4:
-        R = K
-        G = M
-        B = V
-    else:
-        R = V
-        G = M
-        B = N
+    def events(self):
+        events = pygame.event.get()
+        modern_wheel = any(event.type == pygame.MOUSEWHEEL for event in events)
+        for event in events:
+            if event.type == pygame.QUIT:
+                self.running = False
+            elif event.type == pygame.KEYDOWN and not getattr(event, 'repeat', False):
+                if event.key in (pygame.K_ESCAPE, pygame.K_F1):
+                    self.running = False
+                elif event.key in (pygame.K_LCTRL, pygame.K_RCTRL, pygame.K_SPACE):
+                    self.auto = not self.auto
+                elif event.key == pygame.K_l:
+                    self.show_lines = not self.show_lines
+                    self.dirty = True
+                elif event.key == pygame.K_r:
+                    self.reset()
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                if event.button == 1:
+                    self.dragging = True
+                    self.last_mouse = event.pos
+                elif event.button in (4, 5) and not modern_wheel:
+                    self.zoom_by(1 if event.button == 4 else -1)
+            elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+                if self.dragging:
+                    self.drag_to(event.pos)
+                self.dragging = False
+                self.last_mouse = None
+            elif event.type == pygame.MOUSEMOTION and self.dragging:
+                self.drag_to(event.pos)
+            elif event.type == pygame.MOUSEWHEEL:
+                self.zoom_by(getattr(event, 'precise_y', event.y))
+            elif event.type in (pygame.WINDOWFOCUSLOST, pygame.WINDOWLEAVE):
+                self.dragging = False
+                self.last_mouse = None
+            elif event.type in (pygame.WINDOWEXPOSED, pygame.WINDOWSHOWN):
+                self.dirty = True
 
-    red = to8bit(R)
-    green = to8bit(G)
-    blue = to8bit(B)
+    def render(self):
+        self.screen.fill((0, 0, 0))
+        width, height = self.screen.get_size()
+        projected = self.sphere.project(self.angles, self.zoom, (width / 2, height / 2)).tolist()
+        if self.show_lines:
+            for (i, j), color in zip(self.edge_indices, self.sphere.edge_colors):
+                pygame.draw.aaline(self.screen, color, projected[i], projected[j])
+        radius = max(1, min(8, round(self.zoom / 150)))
+        for position, color in zip(projected, self.sphere.point_colors):
+            pygame.draw.circle(self.screen, color, position, radius)
 
-    col = "#%02x%02x%02x" % (red, green, blue)
-      
-    return col
+    def frame(self, elapsed):
+        self.events()
+        if not self.running:
+            return False
+        if self.auto:
+            self.angles[1] = (self.angles[1] + min(max(elapsed, 0), 0.25) * 0.6) % math.tau
+            self.dirty = True
+        if self.dirty:
+            self.render()
+            pygame.display.flip()
+            self.dirty = False
+        return True
 
-# Matrix Multiplication
+    def run(self):
+        while self.frame(self.clock.tick(60) / 1000):
+            pass
 
-def MatMultVec(a,b):
-    colsA = len(a[0])
-    rowsA = len(a)
-    colsB = 1
-    rowsB = len(b)
-
-    if (colsA != rowsB):
-        print("colsA =/= rowsB")
-        return None
-
-    m = rowsA
-    result = [0]*m
-    for i in range(0,rowsA):
-        s = 0
-        for k in range(0,colsA):
-            s += (a[i][k] * b[k])
-        result[i] = s
-    return result
-
-def VecMultMat(a,b):
-    colsA = 1
-    rowsA = len(a)
-    colsB = len(b)
-    rowsB = 1
+    def close(self):
+        if not self.closed:
+            self.closed = True
+            pygame.quit()
 
 
-    n = colsB
-    m = rowsA
-    result = []
-    for i in range(0,n):
-        result.append([0]*m)
-    for i in range(0,rowsA):
-        for j in range(0,colsB):
-            s = 0
-            s += (a[i] * b[j])
-            result[i][j] = s
-    return result
-
-def matrixMult(a,b):
-
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--points', type=int, default=100)
+    parser.add_argument('--size', type=int, nargs=2, default=(1280, 720), metavar=('WIDTH', 'HEIGHT'))
+    parser.add_argument('--fullscreen', action='store_true')
+    args = parser.parse_args()
+    game = None
     try:
-        colsA = len(a[0])
-    except TypeError:
-        return VecMultMat(a,b)
-        
-    rowsA = len(a)
+        game = Game(args.points, args.size, args.fullscreen)
+        game.run()
+    except (ValueError, pygame.error) as error:
+        parser.exit(1, f'Cannot start: {error}\n')
+    finally:
+        if game is not None:
+            game.close()
 
-    try:
-        colsB = len(b[0])
-    except TypeError:
-        return MatMultVec(a,b)
-        
 
-    rowsB = len(b)
-
-    if (colsA != rowsB):
-        print("colsA =/= rowsB")
-        return None
-
-    n = colsB
-    m = rowsA
-    result = []
-    for i in range(0,n):
-        result.append([0]*m)
-    for i in range(0,rowsA):
-        for j in range(0,colsB):
-            s = 0
-            for k in range(0,colsA):
-                s += (a[i][k] * b[k][j])
-            result[i][j] = s
-    return result
-
-cx = width/2
-cy = height/2
-r = 2
-
-anglez = 0
-angley = 0
-anglex = 0
-
-projection    = [0]*2
-projection[0] = (1,0,0)
-projection[1] = (0,1,0)
-
-size = 300
-
-def fibonacci_sphere(samples):
-    global points
-
-    points = []
-    offset = 2./samples
-    increment = math.pi * (3. - math.sqrt(5.));
-
-    for i in range(samples):
-        y = ((i * offset) - 1) + (offset / 2);
-        r = math.sqrt(1 - pow(y,2))
-
-        phi = ((i) % samples) * increment
-
-        x = math.cos(phi) * r
-        z = math.sin(phi) * r
-
-        points.append([x,y,z])
-
-    return points
-
-n = 100
-fibonacci_sphere(n)
-
-pmx, pmy = 0, 0
-def move(event):
-    global pmx, pmy, anglex, angley, anglez
-    mx, my = event.x, event.y
-    dx = mx - pmx
-    dy = my - pmy
-
-    if dx < 100 and dy < 100:
-        angley += dx/100
-        anglex += dy/100
-    pmx, pmy = mx, my
-
-def mouse_wheel(event):
-    global size
-    if event.delta == -120:
-        size -= 5
-        r = size/150
-    elif event.delta == 120:
-        size += 5
-        r = size/150
-
-auto = 0        
-def auto(event):
-    global auto
-    if auto == 0:
-        auto = 1
-    else:
-        auto = 0
-
-main.bind("<B1-Motion>", move)
-main.bind("<MouseWheel>", mouse_wheel)
-main.bind("<Control_L>", auto)
-
-while True:
-    rotationZ = [( math.cos(anglez), -math.sin(anglez), 0),
-                 ( math.sin(anglez),  math.cos(anglez), 0),
-                 (                0,                 0, 1)]
-
-    rotationX = [( 1,                0,                 0),
-                 ( 0, math.cos(anglex), -math.sin(anglex)),
-                 ( 0, math.sin(anglex),  math.cos(anglex))]
-
-    rotationY = [(  math.cos(angley), 0, math.sin(angley)),
-                 (                 0, 1,                0),
-                 ( -math.sin(angley), 0, math.cos(angley))]
-
-    ax = []
-    ay = []
-        
-    for x in range(0,len(points)):
-        projected2d = matrixMult(rotationX  ,points[x])        
-        projected2d = matrixMult(rotationY  ,projected2d)
-        projected2d = matrixMult(rotationZ  ,projected2d)
-        projected2d = matrixMult(projection ,projected2d)
-
-        col2 = hsv2hex(x/n,0.9,0.9)    
-        cnv.create_oval(projected2d[0]*size-r+cx,projected2d[1]*size-r+cy,
-                        projected2d[0]*size+r+cx,projected2d[1]*size+r+cy,
-                        fill=col2,width=0,tags="p")
-
-        ax.append(projected2d[0]*size+cx)
-        ay.append(projected2d[1]*size+cy)
-
-    for i in range(0,int(n)):
-        for j in range(0,int(n)):
-            xdiff = points[i][0]-points[j][0]
-            ydiff = points[i][1]-points[j][1]
-            zdiff = points[i][2]-points[j][2]
-            if (sqrt(xdiff**2+ydiff**2+zdiff**2) < 0.5):
-                col = hsv2hex((i*j)/(n*n),0.9,0.9)
-                cnv.create_line(ax[i],ay[i],ax[j],ay[j],fill=col,tags="l")
-
-    if auto == 1:
-        angley += 0.01
-            
-    cnv.update()
-    cnv.delete("p","l")
+if __name__ == '__main__':
+    main()
